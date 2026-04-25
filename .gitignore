@@ -13,4 +13,3 @@ venv/
 .venv/
 server/
 .qodo/
-*.txt
