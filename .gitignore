@@ -11,3 +11,4 @@ wipe.log
 Thumbs.db
 venv/
 .venv/
+server/
