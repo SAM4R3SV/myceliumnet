@@ -27,7 +27,7 @@ DEFAULT_SERVERS = [
     {
         "id":      "+57.MYCEL",
         "name":    "MyceliumNet Main · Colombia",
-        "url":     "https://myceliumnet-main.supabase.co",
+        "url":     "https://mycelserv.onrender.com",
         "region":  "+57",
         "type":    "root",
         "public":  True
