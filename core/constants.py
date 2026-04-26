@@ -13,7 +13,7 @@ APP_NAME = "MyceliumNet"
 
 # Nodo raiz principal
 ROOT_NODE_ID  = "+57.MYCEL"
-ROOT_NODE_URL = "https://myceliumnet-main.supabase.co"
+ROOT_NODE_URL = "https://mycelserv.onrender.com"
 
 # Region prefix codes
 REGION_CODES = {
