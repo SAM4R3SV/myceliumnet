@@ -320,8 +320,43 @@ def do_receive():
 
 # ── Contactos ─────────────────────────────────────────────────────────────────
 
+def _sync_contact_status():
+    """
+    Consulta al servidor qué solicitudes enviadas por este usuario
+    fueron aceptadas y actualiza el campo 'confirmed' en contacts.json.
+    Se llama silenciosamente al abrir la vista de contactos.
+    """
+    if not _ONLINE or not _NODE_CLIENT:
+        return
+    try:
+        contacts = load_contacts()
+        changed  = False
+        cf       = Path("data/contacts.json")
+
+        for alias, data in contacts.items():
+            if data.get("confirmed"):
+                continue  # ya confirmado, no re-consultar
+            req_id = data.get("request_id", "")
+            if not req_id:
+                continue
+            # Pregunta al servidor si esa solicitud fue aceptada
+            result = _NODE_CLIENT._get("api/contacts/status", {"request_id": req_id})
+            if result and result.get("status") == "accepted":
+                contacts[alias]["confirmed"] = True
+                changed = True
+
+        if changed:
+            cf.write_text(json.dumps(contacts, indent=2))
+    except Exception:
+        pass  # sync es best-effort, no bloquea UX
+
+
 def do_contacts():
     section("contactos")
+
+    # Sincroniza estado confirmed en background sin bloquear
+    _sync_contact_status()
+
     contacts = load_contacts()
 
     if not contacts:
@@ -352,27 +387,64 @@ def _add_contact():
         err("El servidor debe verificar que el ID existe.")
         return
 
+def _add_contact():
+    section("agregar contacto")
+
+    if not _ONLINE:
+        err("Sin conexion al servidor.")
+        err("No puedes agregar contactos en modo local.")
+        err("El servidor debe verificar que el ID existe.")
+        return
+
     blank()
-    alias    = ask("alias del contacto (obligatorio)")
-    id_pub   = ask("ID publica del contacto (obligatorio, hex de 64 chars)")
-    region   = ask("region (obligatorio, ej: +57)")
-    node_id  = ask("nodo del contacto (obligatorio, ej: +57.MYCEL)")
-    note     = ask("nota opcional")
+    alias   = ask("alias del contacto")
+    region  = ask("region (opcional, ej: +57 — Enter para buscar en todas)")
+    note    = ask("nota opcional")
 
-    if not all([alias, id_pub, region, node_id]):
-        err("Todos los campos marcados como obligatorio son requeridos.")
+    if not alias:
+        err("El alias es obligatorio.")
         return
 
-    # Verificar que el ID existe en la red
-    thinking("verificando ID en la red", steps=3)
-    exists = _NODE_CLIENT.verify_user_exists(id_pub)
+    # ── Lookup por alias ──────────────────────────────────────────────────────
+    thinking("buscando usuario en la red", steps=2)
+    lookup = _NODE_CLIENT.get_user_by_alias(alias, region or None)
 
-    if not exists:
-        err("El ID no fue encontrado en la red.")
-        err("Verifica que el ID sea correcto y que el usuario este registrado.")
-        return
+    if not lookup:
+        blank()
+        err(f"No se encontro ningun usuario con alias '{alias}'" +
+            (f" en region {region}" if region else "") + ".")
+        warn("Verifica el alias exacto o prueba sin filtro de region.")
+        blank()
+        # Fallback: entrada manual si el usuario lo prefiere
+        if not confirm("Ingresar ID hex manualmente?"):
+            return
+        id_pub  = ask("ID publica (hex 64 chars)")
+        region  = ask("region (ej: +57)")
+        node_id = ask("nodo (ej: +57.MYCEL)")
+        if not all([id_pub, region, node_id]):
+            err("Datos incompletos.")
+            return
+        # Verifica que el ID existe aunque el alias no matcheó
+        thinking("verificando ID en la red", steps=2)
+        if not _NODE_CLIENT.verify_user_exists(id_pub):
+            err("El ID no fue encontrado en la red.")
+            return
+        ok("ID verificado.")
+    else:
+        id_pub  = lookup["id_publico"]
+        region  = lookup.get("region", region or "?")
+        node_id = lookup.get("node_id", "")
+        blank()
+        ok(f"Usuario encontrado:")
+        info(f"  Alias:  {alias}")
+        info(f"  Region: {region}")
+        info(f"  Nodo:   {node_id}")
+        info(f"  ID:     {id_pub[:16]}...")
+        blank()
+        if not confirm("Enviar solicitud de contacto?"):
+            info("Cancelado.")
+            return
 
-    ok("ID verificado en la red.")
     info("Enviando solicitud de contacto...")
 
     result = _NODE_CLIENT.send_contact_request(
@@ -389,9 +461,9 @@ def _add_contact():
     # Guarda localmente como pendiente
     save_contact(alias, id_pub, region, note)
     contacts = load_contacts()
-    contacts[alias]["node_id"]   = node_id
-    contacts[alias]["confirmed"] = False
-    contacts[alias]["request_id"]= result.get("request_id", "")
+    contacts[alias]["node_id"]    = node_id
+    contacts[alias]["confirmed"]  = False
+    contacts[alias]["request_id"] = result.get("request_id", "")
     Path("data/contacts.json").write_text(json.dumps(contacts, indent=2))
 
     blank()

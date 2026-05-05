@@ -107,11 +107,36 @@ def route_message(sender_node: str, receiver_node: str) -> list[str]:
 
 # ── Cliente de nodo (HTTP) ────────────────────────────────────────────────────
 
-class NodeClient:
+def normalize_node_url(url: str) -> str:
+    """
+    Normaliza una URL de nodo aceptando los formatos:
+      - https://dominio.com
+      - http://dominio.com
+      - http://1.2.3.4:8000
+      - 1.2.3.4:8000       → http://1.2.3.4:8000
+      - dominio.com        → https://dominio.com
+
+    Nunca añade barra final.
+    """
+    url = url.strip().rstrip("/")
+    if not url:
+        return url
+    # Si ya tiene esquema, respeta tal cual
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    # IP con puerto explícito → http (sin TLS)
+    import re
+    if re.match(r"^\d{1,3}(\.\d{1,3}){3}(:\d+)?$", url):
+        return f"http://{url}"
+    # hostname o dominio sin esquema → https
+    return f"https://{url}"
+
+
+
     """Cliente para comunicarse con un servidor/nodo MyceliumNet."""
 
     def __init__(self, server_url: str, node_id: str):
-        self.url     = server_url.rstrip("/")
+        self.url     = normalize_node_url(server_url)
         self.node_id = node_id
         self.timeout = 10
 

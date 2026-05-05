@@ -8,7 +8,7 @@ ___  _____   __ _____  _____  _      _____  _   _ ___  ___ _   _  _____  _____
 """
 
 TAGLINE  = "[ encrypted mesh · trust no server · know your node ]"
-VERSION  = "0.2.0-alpha"
+VERSION  = "0.3.0-alpha"
 APP_NAME = "MyceliumNet"
 
 # Nodo raiz principal
@@ -38,9 +38,13 @@ MAX_NODE_DEPTH    = 3
 # Security constants
 MAX_LOGIN_ATTEMPTS  = 5
 SESSION_TIMEOUT_MIN = 30
-MSG_TTL_UNCLAIMED   = 30
-MSG_TTL_CLAIMED     = 7
+MSG_TTL_UNCLAIMED   = 30   # días hasta expirar si no se descarga
+MSG_TTL_CLAIMED     = 7    # días hasta expirar tras descarga (ack)
 DICE_FACES          = 12
+
+# Network / sync
+HEARTBEAT_INTERVAL_SEC  = 30   # frecuencia del heartbeat de presencia
+CONTACT_SYNC_INTERVAL   = 60   # cada cuántos segundos sincronizar estado de contactos (futuro background sync)
 
 # Session recovery
 RECOVERY_CATEGORIES = ["primera_mascota", "ciudad_favorita", "primer_colegio",

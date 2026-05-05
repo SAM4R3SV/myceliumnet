@@ -20,14 +20,16 @@ try:
 except ImportError:
     HAS_REQUESTS = False
 
+from core.constants import ROOT_NODE_ID, ROOT_NODE_URL
+
 SERVERS_CACHE = Path("data/servers.json")
 
-# Servidores conocidos por defecto
+# Nodo maestro — fuente de verdad definida en core/constants.py
 DEFAULT_SERVERS = [
     {
-        "id":      "+57.MYCEL",
+        "id":      ROOT_NODE_ID,
         "name":    "MyceliumNet Main · Colombia",
-        "url":     "https://mycelserv.onrender.com",
+        "url":     ROOT_NODE_URL,
         "region":  "+57",
         "type":    "root",
         "public":  True
@@ -63,7 +65,39 @@ def _http_ping(url: str, timeout: float = PING_TIMEOUT) -> float | None:
         return None
 
 
-def ping_server(server: dict) -> dict:
+def fetch_nodes_from_master(master_url: str = None) -> list[dict]:
+    """
+    Descarga la lista de nodos activos desde el nodo maestro via /api/nodes/list.
+    Si falla, retorna lista vacía (el caller cae a cache local).
+    """
+    if not HAS_REQUESTS:
+        return []
+    url = (master_url or ROOT_NODE_URL).rstrip("/")
+    try:
+        r = requests.get(f"{url}/api/nodes/list", timeout=PING_TIMEOUT)
+        if r.ok:
+            data = r.json()
+            nodes = data.get("nodes", [])
+            # Normaliza al mismo formato que DEFAULT_SERVERS
+            result = []
+            for n in nodes:
+                entry = {
+                    "id":     n.get("node_id", ""),
+                    "name":   n.get("name", n.get("node_id", "")),
+                    "url":    n.get("url", ""),
+                    "region": n.get("region", ""),
+                    "type":   "node",
+                    "public": True,
+                }
+                if entry["url"]:
+                    result.append(entry)
+            return result
+    except Exception:
+        pass
+    return []
+
+
+
     """
     Mide latencia a un servidor.
     Retorna el dict del servidor con campos añadidos:
@@ -112,12 +146,32 @@ def ping_all(servers: list[dict], on_result=None) -> list[dict]:
 # ── Cache local ───────────────────────────────────────────────────────────────
 
 def load_servers() -> list[dict]:
-    """Carga servidores desde cache local. Si no existe, usa DEFAULT_SERVERS."""
+    """
+    Carga lista de servidores con prioridad:
+      1. Fetch dinámico desde el nodo maestro (/api/nodes/list)
+      2. Cache local (data/servers.json) si el fetch falla
+      3. DEFAULT_SERVERS si no hay nada más
+
+    El nodo maestro siempre se incluye aunque no esté en la lista remota
+    (es la semilla mínima para conectarse).
+    """
+    dynamic = fetch_nodes_from_master()
+    if dynamic:
+        # Asegura que el maestro esté en la lista aunque el servidor
+        # no se liste a sí mismo (edge case en cold start)
+        ids = {s["id"] for s in dynamic}
+        for d in DEFAULT_SERVERS:
+            if d["id"] not in ids:
+                dynamic.insert(0, d)
+        return dynamic
+
+    # Fallback: cache local
     if SERVERS_CACHE.exists():
         try:
             return json.loads(SERVERS_CACHE.read_text())
         except Exception:
             pass
+
     return list(DEFAULT_SERVERS)
 
 
