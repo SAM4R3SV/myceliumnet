@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main.py — MyceliumNet v0.3.0-alpha
+main.py — MyceliumNet v0.3.1
 """
 import sys
 import os
@@ -536,7 +536,7 @@ def do_status():
         ("Servidor",     cfg.get("server_url", "local")[:40]),
         ("Conexion",     net_status),
         ("Rejilla",      cfg.get("grid_pattern", "?")),
-        ("Version",      cfg.get("version", "0.3.0-alpha")),
+        ("Version",      cfg.get("version", "0.3.1")),
         ("ID publica",   _SESSION.get("id_publico","?")[:24] + "..."),
     ])
     blank()
