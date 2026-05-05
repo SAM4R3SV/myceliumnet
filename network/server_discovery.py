@@ -96,7 +96,24 @@ def fetch_nodes_from_master(master_url: str = None) -> list[dict]:
         pass
     return []
 
+def ping_server(server: dict) -> dict:
+    """
+    Mide latencia a un servidor.
+    Retorna el dict del servidor con campos añadidos:
+      latency_ms, online, last_checked
+    """
+    url  = server.get("url", "")
+    host = urlparse(url).hostname or url
 
+    ms = _http_ping(url) if HAS_REQUESTS else None
+    if ms is None:
+        ms = _tcp_ping(host)
+
+    result = dict(server)
+    result["latency_ms"]    = round(ms, 1) if ms is not None else None
+    result["online"]        = ms is not None
+    result["last_checked"]  = time.strftime("%Y-%m-%dT%H:%M:%S")
+    return result
 
     """
     Mide latencia a un servidor.

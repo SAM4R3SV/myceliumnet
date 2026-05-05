@@ -255,7 +255,109 @@ def normalize_node_url(url: str) -> str:
             pass
         return None
 
+class NodeClient:
+    """Cliente para comunicarse con un servidor/nodo MyceliumNet."""
 
+    def __init__(self, server_url: str, node_id: str):
+        self.url     = normalize_node_url(server_url)
+        self.node_id = node_id
+        self.timeout = 10
+
+    def _post(self, endpoint: str, data: dict) -> dict | None:
+        if not HAS_REQUESTS:
+            return None
+        try:
+            r = requests.post(f"{self.url}/{endpoint}", json=data,
+                              timeout=self.timeout)
+            return r.json() if r.ok else {"error": r.text}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _get(self, endpoint: str, params: dict = None) -> dict | None:
+        if not HAS_REQUESTS:
+            return None
+        try:
+            r = requests.get(f"{self.url}/{endpoint}", params=params,
+                             timeout=self.timeout)
+            return r.json() if r.ok else {"error": r.text}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def register_user(self, id_publico: str, alias: str,
+                      region: str, node_id: str) -> dict:
+        return self._post("api/users/register", {
+            "id_publico": id_publico,
+            "alias":      alias,
+            "region":     region,
+            "node_id":    node_id,
+            "timestamp":  time.strftime("%Y-%m-%dT%H:%M:%S")
+        }) or {}
+
+    def verify_user_exists(self, id_publico: str) -> bool:
+        result = self._get("api/users/exists", {"id": id_publico})
+        return bool(result and result.get("exists"))
+
+    def get_user_by_alias(self, alias: str, region: str = None) -> dict | None:
+        params = {"alias": alias}
+        if region:
+            params["region"] = region
+        result = self._get("api/users/lookup", params)
+        if result and not result.get("error"):
+            return result
+        return None
+
+    def send_message(self, package: dict) -> dict:
+        return self._post("api/messages/send", package) or {}
+
+    def fetch_messages(self, id_publico: str) -> list[dict]:
+        result = self._get("api/messages/fetch", {"id": id_publico})
+        if result and isinstance(result.get("messages"), list):
+            return result["messages"]
+        return []
+
+    def ack_message(self, msg_id: str, id_publico: str):
+        self._post("api/messages/ack", {
+            "msg_id":     msg_id,
+            "id_publico": id_publico
+        })
+
+    def send_contact_request(self, from_id: str, to_id: str,
+                              from_alias: str, note: str = "") -> dict:
+        return self._post("api/contacts/request", {
+            "from_id":    from_id,
+            "to_id":      to_id,
+            "from_alias": from_alias,
+            "note":       note,
+            "timestamp":  time.strftime("%Y-%m-%dT%H:%M:%S")
+        }) or {}
+
+    def fetch_contact_requests(self, id_publico: str) -> list[dict]:
+        result = self._get("api/contacts/pending", {"id": id_publico})
+        if result and isinstance(result.get("requests"), list):
+            return result["requests"]
+        return []
+
+    def respond_contact_request(self, request_id: str,
+                                 id_publico: str, accept: bool) -> dict:
+        return self._post("api/contacts/respond", {
+            "request_id": request_id,
+            "id_publico": id_publico,
+            "accepted":   accept
+        }) or {}
+
+    def node_info(self) -> dict:
+        return self._get("api/node/info") or {}
+
+    def ping(self) -> float | None:
+        try:
+            import time as _t
+            start = _t.monotonic()
+            r = self._get("ping")
+            if r is not None:
+                return round((_t.monotonic() - start) * 1000, 1)
+        except Exception:
+            pass
+        return None
 # ── Túneles ───────────────────────────────────────────────────────────────────
 
 class TunnelManager:

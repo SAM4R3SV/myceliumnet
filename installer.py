@@ -296,7 +296,7 @@ def _save_config(server: dict, region: str, grid_pattern: str):
         "region":       region,
         "grid_pattern": grid_pattern,
         "grid_locked":  True,
-        "version":      "0.2.0-alpha"
+        "version":      "0.3.0-alpha"
     }
     Path("data/config.json").write_text(json.dumps(cfg, indent=2))
 
@@ -371,7 +371,7 @@ def main():
 
     blank()
     line()
-    ok(f"{APP_NAME} v0.2.0-alpha instalado correctamente.")
+    ok(f"{APP_NAME} v0.3.0-alpha instalado correctamente.")
     blank()
     token_display("Tu alias",  alias)
     token_display("Tu region", region)
