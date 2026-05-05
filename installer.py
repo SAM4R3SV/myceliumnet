@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-installer.py — MyceliumNet v0.2.0-alpha setup wizard
+installer.py — MyceliumNet v0.3.0-alpha setup wizard
 """
 import sys
 import os

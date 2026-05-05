@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-main.py — MyceliumNet v0.2.0-alpha
+main.py — MyceliumNet v0.3.0-alpha
 """
 import sys
 import os
