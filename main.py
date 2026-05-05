@@ -193,14 +193,18 @@ def do_send():
     grid = _SESSION.get("grid_pattern", "zigzag")
     thinking("cifrando", steps=3)
 
-    package = encrypt_message(msg, k_shared, token, grid)
-    package["sender_id"]   = _SESSION["id_publico"]
-    package["sender_alias"]= _SESSION.get("alias", "?")
-    package["dest_id"]     = dest_id
-    package["dest_node"]   = dest_node
-    package["tunnel_type"] = tunnel_type
-    package["token_hint"]  = token[:4] + "****"
-    package["timestamp"]   = datetime.datetime.now().isoformat()
+    raw_package = encrypt_message(msg, k_shared, token, grid)
+
+    package = {
+        "sender_id":    _SESSION["id_publico"],
+        "sender_alias": _SESSION.get("alias", "?"),
+        "dest_id":      dest_id,
+        "dest_node":    dest_node,
+        "tunnel_type":  tunnel_type,
+        "token_hint":   token[:4] + "****",
+        "timestamp":    datetime.datetime.now().isoformat(),
+        "payload":      raw_package,
+    }
 
     # Intenta enviar por red si esta online
     sent_online = False
@@ -387,15 +391,6 @@ def _add_contact():
         err("El servidor debe verificar que el ID existe.")
         return
 
-def _add_contact():
-    section("agregar contacto")
-
-    if not _ONLINE:
-        err("Sin conexion al servidor.")
-        err("No puedes agregar contactos en modo local.")
-        err("El servidor debe verificar que el ID existe.")
-        return
-
     blank()
     alias   = ask("alias del contacto")
     region  = ask("region (opcional, ej: +57 — Enter para buscar en todas)")
@@ -541,7 +536,7 @@ def do_status():
         ("Servidor",     cfg.get("server_url", "local")[:40]),
         ("Conexion",     net_status),
         ("Rejilla",      cfg.get("grid_pattern", "?")),
-        ("Version",      cfg.get("version", "0.2.0-alpha")),
+        ("Version",      cfg.get("version", "0.3.0-alpha")),
         ("ID publica",   _SESSION.get("id_publico","?")[:24] + "..."),
     ])
     blank()
