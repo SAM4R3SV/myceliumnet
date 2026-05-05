@@ -29,7 +29,7 @@ Sistema de mensajería cifrada persona-a-persona.
 **Requisitos:** Python 3.10+
 
 ```bash
-git clone https://github.com/TU_USUARIO/myceliumnet
+git clone https://github.com/SAMAR3SV/myceliumnet
 cd myceliumnet
 pip install -r requirements.txt
 python installer.py
