@@ -340,14 +340,23 @@ def _sync_contact_status():
         for alias, data in contacts.items():
             if data.get("confirmed"):
                 continue  # ya confirmado, no re-consultar
+            
+            # Intenta sincronizar por request_id si existe
             req_id = data.get("request_id", "")
-            if not req_id:
-                continue
-            # Pregunta al servidor si esa solicitud fue aceptada
-            result = _NODE_CLIENT._get("api/contacts/status", {"request_id": req_id})
-            if result and result.get("status") == "accepted":
-                contacts[alias]["confirmed"] = True
-                changed = True
+            if req_id:
+                result = _NODE_CLIENT._get("api/contacts/status", {"request_id": req_id})
+                if result and result.get("status") == "accepted":
+                    contacts[alias]["confirmed"] = True
+                    changed = True
+                    continue
+            
+            # Fallback: consultar por to_id si no hay request_id o falló la consulta
+            to_id = data.get("id_publico", "")
+            if to_id:
+                result = _NODE_CLIENT._get("api/contacts/status", {"to_id": to_id})
+                if result and result.get("status") == "accepted":
+                    contacts[alias]["confirmed"] = True
+                    changed = True
 
         if changed:
             cf.write_text(json.dumps(contacts, indent=2))
