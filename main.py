@@ -298,7 +298,10 @@ def do_receive():
     thinking("descifrando", steps=3)
 
     try:
-        plaintext = decrypt_message(package, k_shared, token)
+        # El servidor devuelve el paquete completo; decrypt_message
+        # necesita solo el payload interno {nonce, ciphertext, ...}
+        inner = package.get("payload", package)
+        plaintext = decrypt_message(inner, k_shared, token)
     except ValueError as e:
         err(f"No se pudo descifrar: {e}")
         return
