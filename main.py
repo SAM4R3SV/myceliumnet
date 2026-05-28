@@ -63,6 +63,40 @@ def _start_heartbeat():
     t.start()
 
 
+def _check_update_silently():
+    """Verifica si hay update disponible y ofrece instalarlo."""
+    if not _ONLINE or not _NODE_CLIENT:
+        return
+    try:
+        remote = _NODE_CLIENT.check_version()
+        remote_ver = remote.get("version", "")
+        if not remote_ver:
+            return
+        # Lee versión local desde constants.py
+        from core.constants import VERSION
+        if remote_ver == VERSION:
+            return  # ya está actualizado
+        blank()
+        warn(f"Actualizacion disponible: {VERSION} → {remote_ver}")
+        if confirm("Descargar e instalar ahora?"):
+            import subprocess
+            blank()
+            thinking("iniciando actualización", steps=2)
+            subprocess.Popen([sys.executable, "update.py"])
+            info("El actualización se ha iniciado en background.")
+            info("Por favor espera a que termine antes de cerrar la sesión.")
+            blank()
+        else:
+            blank()
+            warn("Aviso: Si no actualizas, podrías experimentar:")
+            warn("  - Incompatibilidades menores con el servidor")
+            warn("  - Fallas en features nuevas de subversiones")
+            info("Puedes actualizar después con:  python update.py")
+            blank()
+    except Exception:
+        pass  # nunca bloquea el login
+
+
 # ── Login ─────────────────────────────────────────────────────────────────────
 
 def do_login():
@@ -105,6 +139,7 @@ def do_login():
             _start_heartbeat()
         else:
             warn("Modo local — sin conexion al servidor.")
+        _check_update_silently()
         break
     else:
         err("Sesion bloqueada.")
@@ -298,9 +333,7 @@ def do_receive():
     thinking("descifrando", steps=3)
 
     try:
-        # El servidor devuelve el paquete completo; decrypt_message
-        # necesita solo el payload interno {nonce, ciphertext, ...}
-        inner = package.get("payload", package)
+        inner = package.get("payload", package)  # extrae el payload interno
         plaintext = decrypt_message(inner, k_shared, token)
     except ValueError as e:
         err(f"No se pudo descifrar: {e}")
