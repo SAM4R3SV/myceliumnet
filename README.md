@@ -62,12 +62,6 @@ Si venías de `mnv1`:
 
 Este repositorio está orientado a uso comercial interno o privado. Si quieres proponer cambios, abre una issue con la sugerencia y el contexto; no se aceptan cambios directos sin revisión.
 
-## Documentación relacionada
-
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md)
-- [`ROADMAP.md`](./ROADMAP.md)
-- ADR-001 a ADR-004
-
 ## Licencia
 
 Pendiente de definir.
