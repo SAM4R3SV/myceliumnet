@@ -8,7 +8,7 @@ ___  _____   __ _____  _____  _      _____  _   _ ___  ___ _   _  _____  _____
 """
 
 TAGLINE  = "[ encrypted mesh · trust no server · know your node ]"
-VERSION  = "0.3.0-alpha"
+VERSION  = "0.4.0-alpha"
 APP_NAME = "MyceliumNet"
 
 # Nodo raiz principal
@@ -44,8 +44,5 @@ DICE_FACES          = 12
 
 # Network / sync
 HEARTBEAT_INTERVAL_SEC  = 30   # frecuencia del heartbeat de presencia
-CONTACT_SYNC_INTERVAL   = 60   # cada cuántos segundos sincronizar estado de contactos (futuro background sync)
+CONTACT_SYNC_INTERVAL   = 60   # segundos entre sync de contactos en segundo plano
 
-# Session recovery
-RECOVERY_CATEGORIES = ["primera_mascota", "ciudad_favorita", "primer_colegio",
-                        "apodo_infancia", "pelicula_favorita", "libro_favorito"]

@@ -11,12 +11,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.ui        import *
-from core.constants import APP_NAME, SESSION_TIMEOUT_MIN
-from core.identity  import (load_session, session_exists, recover_session,
-                             derive_identity, save_session, get_public_info)
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+
+from core.ui        import *  # noqa: F403
+from core.identity  import load_session, session_exists, get_public_info
 from core.crypto    import (encrypt_message, decrypt_message, generate_token,
-                             roll_d12, load_contacts, save_contact, get_contact)
+                             dice_to_token, load_contacts, save_contact, get_contact)
 
 _SESSION = {}
 _NODE_CLIENT = None
@@ -27,7 +27,18 @@ def _load_config() -> dict:
     f = Path("data/config.json")
     if f.exists():
         return json.loads(f.read_text())
-    return {"grid_pattern": "zigzag", "server_url": "local", "node_id": "+0.LOCAL"}
+    return {"payload_version": "mnv2", "server_url": "local", "node_id": "+0.LOCAL"}
+
+
+def _derive_shared_key(my_private_bytes: bytes, other_public_hex: str) -> bytes:
+    """Deriva un secreto compartido ECDH a partir de claves X25519 crudas."""
+    try:
+        other_public = X25519PublicKey.from_public_bytes(bytes.fromhex(other_public_hex))
+    except ValueError as exc:
+        raise ValueError("ID publica invalida.") from exc
+
+    my_private = X25519PrivateKey.from_private_bytes(my_private_bytes)
+    return my_private.exchange(other_public)
 
 
 def _init_node_client(cfg: dict):
@@ -168,13 +179,12 @@ def do_send():
 
     if contact:
         dest_id     = contact["id_publico"]
-        dest_region = contact["region"]
         dest_node   = contact.get("node_id", "")
         info(f"Usando contacto guardado: {dest_alias}")
     else:
         warn("Contacto no encontrado. Ingresa sus datos manualmente.")
         dest_id     = ask("ID publica del destinatario (hex)")
-        dest_region = ask("region del destinatario (ej: +57)")
+        ask("region del destinatario (ej: +57)")
         dest_node   = ask("nodo del destinatario (ej: +57.MYCEL)")
 
     blank()
@@ -184,8 +194,8 @@ def do_send():
     if _ONLINE and _NODE_CLIENT:
         from network.node_protocol import TunnelManager
         tm = TunnelManager(_NODE_CLIENT, _SESSION["id_publico"])
-        if tm.check_live_available(dest_id):
-            tunnel_type = "live"
+        tunnel_type = tm.get_tunnel_type(dest_id)
+        if tunnel_type == "live":
             info("Destinatario en linea — tunel directo disponible.")
         else:
             info("Destinatario offline — modo bandeja de entrada.")
@@ -200,10 +210,7 @@ def do_send():
         raw_rolls = ask("resultados (ej: 3 A 2 F 1 B ...)").upper().split()
         valid = {"1","2","3","4","5","6","A","B","C","D","E","F"}
         rolls = [r for r in raw_rolls if r in valid]
-        from core.crypto import dice_to_token
-        import secrets
-        token = dice_to_token(rolls) + secrets.token_hex(8)
-        token = token[:64]
+        token = dice_to_token(rolls)
     else:
         token, rolls = generate_token()
         blank()
@@ -220,23 +227,23 @@ def do_send():
         err("Mensaje vacio.")
         return
 
-    import hashlib
     k_self   = _SESSION["k_usuario"]
-    id_dest  = bytes.fromhex(dest_id[:64]) if len(dest_id) >= 64 else dest_id.encode()
-    k_shared = hashlib.sha256(k_self + id_dest).digest()
+    try:
+        k_shared = _derive_shared_key(k_self, dest_id)
+    except ValueError as exc:
+        err(str(exc))
+        return
 
-    grid = _SESSION.get("grid_pattern", "zigzag")
     thinking("cifrando", steps=3)
 
-    raw_package = encrypt_message(msg, k_shared, token, grid)
+    raw_package = encrypt_message(msg, k_shared, token)
 
     package = {
         "sender_id":    _SESSION["id_publico"],
         "sender_alias": _SESSION.get("alias", "?"),
         "dest_id":      dest_id,
         "dest_node":    dest_node,
-        "tunnel_type":  tunnel_type,
-        "token_hint":   token[:4] + "****",
+        "tunnel_type":  str(tunnel_type),
         "timestamp":    datetime.datetime.now().isoformat(),
         "payload":      raw_package,
     }
@@ -324,11 +331,13 @@ def do_receive():
         err("Token vacio.")
         return
 
-    import hashlib
     sender_id = package.get("sender_id", "")
     k_self    = _SESSION["k_usuario"]
-    id_sender = bytes.fromhex(sender_id[:64]) if len(sender_id) >= 64 else sender_id.encode()
-    k_shared  = hashlib.sha256(k_self + id_sender).digest()
+    try:
+        k_shared = _derive_shared_key(k_self, sender_id)
+    except ValueError as exc:
+        err(str(exc))
+        return
 
     thinking("descifrando", steps=3)
 
@@ -376,7 +385,7 @@ def _sync_contact_status():
         for alias, data in contacts.items():
             if data.get("confirmed"):
                 continue  # ya confirmado, no re-consultar
-            
+
             # Intenta sincronizar por request_id si existe
             req_id = data.get("request_id", "")
             if req_id:
@@ -385,7 +394,7 @@ def _sync_contact_status():
                     contacts[alias]["confirmed"] = True
                     changed = True
                     continue
-            
+
             # Fallback: consultar por to_id si no hay request_id o falló la consulta
             to_id = data.get("id_publico", "")
             if to_id:
@@ -475,7 +484,7 @@ def _add_contact():
         region  = lookup.get("region", region or "?")
         node_id = lookup.get("node_id", "")
         blank()
-        ok(f"Usuario encontrado:")
+        ok("Usuario encontrado:")
         info(f"  Alias:  {alias}")
         info(f"  Region: {region}")
         info(f"  Nodo:   {node_id}")
@@ -580,7 +589,7 @@ def do_status():
         ("Nodo",         cfg.get("node_id", "?")),
         ("Servidor",     cfg.get("server_url", "local")[:40]),
         ("Conexion",     net_status),
-        ("Rejilla",      cfg.get("grid_pattern", "?")),
+        ("Payload",      cfg.get("payload_version", "mnv2")),
         ("Version",      cfg.get("version", "0.3.1")),
         ("ID publica",   _SESSION.get("id_publico","?")[:24] + "..."),
     ])
@@ -623,8 +632,8 @@ def _change_server():
         info("Cambio cancelado.")
         return
 
-    from network.server_discovery import add_server, ping_server
     from network.node_protocol import NodeClient, request_node_transfer
+    from network.server_discovery import add_server, ping_server
 
     new_srv = add_server(new_url, new_node_id, _SESSION.get("region","?"), new_name)
 

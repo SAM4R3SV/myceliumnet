@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-installer.py — MyceliumNet v0.3.1 setup wizard
+installer.py — MyceliumNet v0.4.0 setup wizard
 """
 import sys
 import os
@@ -33,12 +33,10 @@ check_and_install()
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.ui        import *
-from core.constants import (REGION_CODES, RECOVERY_CATEGORIES, APP_NAME,
-                             ROOT_NODE_ID, ROOT_NODE_URL)
-from core.identity  import (derive_identity, save_session, session_exists,
-                             get_public_info)
-from core.crypto    import suggest_grid_pattern, GRID_PATTERNS
+from core.ui        import *  # noqa: F403
+from core.constants import (REGION_CODES, APP_NAME, VERSION)
+from core.identity  import (generate_identity, format_backup_key,
+                             save_session, session_exists)
 from network.server_discovery import discover, add_server, ping_server
 
 
@@ -150,39 +148,6 @@ def _pick_region() -> str:
         err("Codigo invalido. Debe empezar con '+' seguido de numeros.")
 
 
-def _collect_datos() -> dict:
-    section("identidad — 5 datos personales")
-    warn("Estos datos NUNCA se guardaran en disco.")
-    warn("Solo se usan para generar tu ID. Anotalos en un lugar seguro.")
-    blank()
-    info("Escribe EXACTAMENTE como los recordaras — sin tildes si prefieres.")
-    blank()
-
-    fields = [
-        ("nombre",    "Nombre completo"),
-        ("fecha_nac", "Fecha de nacimiento (dd/mm/aaaa)"),
-        ("lugar",     "Ciudad/lugar de nacimiento o residencia"),
-        ("genero",    "Genero (ej: M, F, NB, ...)"),
-        ("usuario",   "Nombre de usuario unico"),
-    ]
-
-    datos = {}
-    for key, label in fields:
-        datos[key] = ask(label)
-
-    blank()
-    highlight("Confirma tus datos:")
-    for key, label in fields:
-        print(f"  {c(C.DGRAY, f'{label}:'):<42} {c(C.WHITE, datos[key])}")
-    blank()
-
-    if not confirm("Son correctos?"):
-        warn("Reiniciando captura de datos...")
-        return _collect_datos()
-
-    return datos
-
-
 def _pick_alias() -> str:
     section("alias publico")
     info("Este es el nombre con el que otros usuarios te ven en la red.")
@@ -210,69 +175,6 @@ def _pick_password() -> str:
         return p1
 
 
-def _pick_grid(k_usuario: bytes) -> str:
-    section("patron de rejilla")
-    info("Agrega una capa de transposicion estructural al cifrado.")
-    info("Una vez fijada, solo puede cambiarla una solicitud al servidor.")
-    blank()
-
-    suggested = suggest_grid_pattern(k_usuario)
-    info(f"Patron sugerido para tu perfil: {c(C.GREEN, suggested)}")
-    blank()
-
-    for name, desc in GRID_PATTERNS.items():
-        marker = c(C.GREEN, "* ") if name == suggested else "  "
-        print(f"  {marker}{c(C.WHITE, name):<16} {c(C.DGRAY, desc)}")
-    blank()
-
-    if confirm(f"Usar el sugerido ({suggested})?"):
-        ok(f"Rejilla: {suggested}")
-        return suggested
-
-    while True:
-        choice = ask("nombre del patron")
-        if choice in GRID_PATTERNS:
-            ok(f"Rejilla: {choice}")
-            return choice
-        err(f"Patron invalido. Opciones: {', '.join(GRID_PATTERNS.keys())}")
-
-
-def _pick_recovery() -> dict:
-    section("recuperacion de sesion")
-    info("Elige 3 preguntas de seguridad como respaldo.")
-    info("Necesitaras 2 de 3 respuestas correctas para recuperar acceso.")
-    blank()
-
-    for i, cat in enumerate(RECOVERY_CATEGORIES, 1):
-        print(f"  {c(C.DGRAY, f'[{i}]')} {cat.replace('_', ' ')}")
-    blank()
-
-    selected = {}
-    count = 0
-    chosen_indices = set()
-
-    while count < 3:
-        raw = ask(f"pregunta {count+1} (numero)")
-        if not raw.isdigit():
-            err("Ingresa un numero.")
-            continue
-        idx = int(raw) - 1
-        if idx < 0 or idx >= len(RECOVERY_CATEGORIES):
-            err("Numero fuera de rango.")
-            continue
-        if idx in chosen_indices:
-            err("Ya elegiste esa pregunta.")
-            continue
-        q = RECOVERY_CATEGORIES[idx]
-        a = ask(f"  respuesta para '{q.replace('_', ' ')}'")
-        selected[q] = a
-        chosen_indices.add(idx)
-        count += 1
-
-    ok("Preguntas de recuperacion configuradas.")
-    return selected
-
-
 def _register_on_server(server: dict, id_publico: str,
                          alias: str, region: str) -> bool:
     """Intenta registrar el usuario en el servidor elegido."""
@@ -288,15 +190,14 @@ def _register_on_server(server: dict, id_publico: str,
         return False
 
 
-def _save_config(server: dict, region: str, grid_pattern: str):
+def _save_config(server: dict, region: str):
     cfg = {
         "server_url":   server.get("url", "local"),
         "server_label": server.get("label", "local"),
         "node_id":      server.get("node_id", "+0.LOCAL"),
         "region":       region,
-        "grid_pattern": grid_pattern,
-        "grid_locked":  True,
-        "version":      "0.3.1"
+        "payload_version": "mnv2",
+        "version":      VERSION,
     }
     Path("data/config.json").write_text(json.dumps(cfg, indent=2))
 
@@ -326,24 +227,32 @@ def main():
     server  = _pick_server(discovered)
     _create_folders()
 
-    datos   = _collect_datos()
     alias   = _pick_alias()
 
     section("generando identidad")
-    thinking("derivando ID y clave (esto tarda unos segundos)", steps=6)
+    thinking("generando keypair X25519 (esto tarda unos segundos)", steps=4)
 
-    id_publico, k_usuario = derive_identity(datos, region)
+    id_publico, k_usuario = generate_identity()
 
     ok(f"ID publica generada: {id_publico[:16]}...{id_publico[-8:]}")
-    info("Tu K_usuario esta en memoria. Ahora se cifrara localmente.")
+    info("Tu clave privada esta en memoria. Guardala antes de continuar.")
     blank()
 
+    section("backup de recuperacion")
+    info("Esta clave privada se mostrara una sola vez.")
+    info("Guardala fuera del dispositivo. Sin ese backup no hay recuperacion.")
+    blank()
+    print(format_backup_key(k_usuario))
+    blank()
+
+    if not confirm("¿Ya guardaste tu backup?"):
+        err("Instalacion cancelada para proteger tu identidad.")
+        return
+
     password = _pick_password()
-    grid     = _pick_grid(k_usuario)
-    recovery = _pick_recovery()
 
     section("guardando sesion")
-    thinking("cifrando y guardando", steps=4)
+    thinking("cifrando y guardando", steps=3)
 
     save_session(
         k_usuario        = k_usuario,
@@ -351,10 +260,9 @@ def main():
         alias            = alias,
         region           = region,
         password         = password,
-        recovery_answers = recovery
     )
 
-    _save_config(server, region, grid)
+    _save_config(server, region)
 
     # Registro en servidor
     if server.get("url") != "local":
@@ -367,19 +275,18 @@ def main():
             warn("No se pudo registrar en el servidor ahora.")
             warn("Se reintentara automaticamente al iniciar sesion.")
 
-    del datos, k_usuario, password
+    del k_usuario, password
 
     blank()
     line()
-    ok(f"{APP_NAME} v0.3.1 instalado correctamente.")
+    ok(f"{APP_NAME} {VERSION} instalado correctamente.")
     blank()
     token_display("Tu alias",  alias)
     token_display("Tu region", region)
     token_display("Nodo",      server.get("node_id", "local"))
-    token_display("Rejilla",   grid)
     blank()
-    warn("Anota tus 5 datos personales en un lugar seguro.")
-    warn("Sin ellos no podras recuperar tu identidad si pierdes la sesion.")
+    warn("Anota tu backup privado en un lugar seguro.")
+    warn("Sin ese backup no podras recuperar tu identidad si pierdes la sesion.")
     blank()
     info("Ejecuta  python main.py  para entrar a MyceliumNet.")
     line()

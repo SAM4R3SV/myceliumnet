@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-update.py — MyceliumNet OTA updater v0.3.2
+update.py — MyceliumNet OTA updater v0.4.0
 Uso: python update.py
-     python update.py --force   (fuerza aunque sea la misma version)
-     python update.py --check   (solo verifica, no actualiza)
+    python update.py --force   (fuerza aunque sea la misma version)
+    python update.py --check   (solo verifica, no actualiza)
 """
 import sys
-import os
 import json
 import hashlib
 import shutil
@@ -46,12 +45,13 @@ CRITICAL_FILES = [
 # Zonas sensibles: si el contenido cambia de forma incompatible, advertir
 SENSITIVE_MARKERS = {
     "core/identity.py": [
-        "myceliumnet_v1_",   # salt del KDF — si cambia, rompe todas las identidades
-        "n=2**15",           # parámetros Scrypt identidad
+        "X25519PrivateKey.generate()",
+        "public_bytes_raw()",
+        "private_bytes_raw()",
     ],
     "core/crypto.py": [
-        '"mnv1"',            # versión del payload cifrado
-        "AES-256-GCM",       # algoritmo
+        '"mnv2"',
+        "AESGCM",
     ],
 }
 
@@ -63,7 +63,7 @@ def load_local_version() -> str:
     if constants.exists():
         for line in constants.read_text().splitlines():
             if line.strip().startswith("VERSION"):
-                # VERSION = "0.3.1-alpha"
+                # VERSION = "0.4.0-alpha"
                 parts = line.split("=")
                 if len(parts) == 2:
                     return parts[1].strip().strip('"').strip("'")
@@ -260,7 +260,7 @@ def main():
         sys.exit(0)
 
     local_ver = load_local_version()
-    print(f"\n  MyceliumNet Updater")
+    print("\n  MyceliumNet Updater")
     print(f"  Version local:  {local_ver}")
 
     remote = fetch_remote_info(server_url)
@@ -321,7 +321,7 @@ def main():
             # Verificar archivos críticos
             missing = check_critical_files(src_root)
             if missing:
-                print(f"  [ERROR] Archivos criticos ausentes en el update:")
+                print("  [ERROR] Archivos criticos ausentes en el update:")
                 for f in missing:
                     print(f"    - {f}")
                 print("  Update abortado por seguridad.")

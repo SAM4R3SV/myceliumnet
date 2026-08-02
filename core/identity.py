@@ -1,87 +1,42 @@
-"""
-identity.py — núcleo de identidad MyceliumNet
-
-Convierte 5 datos personales en:
-  - ID_publico  : identificador en el servidor (hash, no reversible)
-  - K_usuario   : material criptográfico privado (deriva la llave de cifrado)
-
-NUNCA se guardan los datos personales. Solo el resultado del KDF,
-cifrado con la contraseña local del usuario.
-"""
-import os
-import json
-import hashlib
-import secrets
-import base64
-from pathlib import Path
-
-from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+import json
+import secrets
+from pathlib import Path
 
 DATA_FILE = Path("data/identity.bin")
 
-# ── KDF principal ─────────────────────────────────────────────────────────────
-
-def _normalize(value: str) -> str:
-    """Normaliza un dato: minúsculas, sin espacios extra, sin tildes básicas."""
-    replacements = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n"}
-    v = value.strip().lower()
-    for k, r in replacements.items():
-        v = v.replace(k, r)
-    return v
-
-def _datos_to_bytes(datos: dict) -> bytes:
-    """Convierte los 5 datos en bytes canonicos."""
-    keys = ["nombre", "fecha_nac", "lugar", "genero", "usuario"]
-    parts = [_normalize(str(datos[k])) for k in keys]
-    return "|".join(parts).encode("utf-8")
-
-def derive_identity(datos: dict, region: str = "+0") -> tuple[str, bytes]:
+def generate_identity() -> tuple[str, bytes]:
     """
-    Deriva (ID_publico, K_usuario) desde los 5 datos.
+    Genera una identidad nueva basada en un keypair X25519 aleatorio.
 
-    ID_publico  → str hex, se sube al servidor, identifica al receptor
-    K_usuario   → bytes (32), NUNCA sale del dispositivo
+    Retorna (id_publico, k_usuario):
+      - id_publico: clave pública X25519 en hex
+      - k_usuario: clave privada X25519 en bytes crudos
     """
-    raw = _datos_to_bytes(datos)
-
-    # Salt fija del sistema + región (evita rainbow tables entre redes)
-    salt_base = f"myceliumnet_v1_{region}".encode()
-    salt = hashlib.sha256(salt_base).digest()
-
-    # Scrypt: lento, resistente a GPU
-    kdf = Scrypt(salt=salt, length=64, n=2**15, r=8, p=1,
-                 backend=default_backend())
-    material = kdf.derive(raw)
-
-    id_publico = material[:32].hex()   # primeros 32 bytes → ID público
-    k_usuario  = material[32:]         # últimos 32 bytes  → clave privada
-
-    return id_publico, k_usuario
+    priv = X25519PrivateKey.generate()
+    pub = priv.public_key()
+    return pub.public_bytes_raw().hex(), priv.private_bytes_raw()
 
 
-# ── Llave compartida entre dos usuarios ──────────────────────────────────────
-
-def shared_key(k_usuario_a: bytes, k_usuario_b: bytes) -> bytes:
-    """
-    Genera la llave compartida simétrica entre dos usuarios.
-    Orden-independiente: shared(A,B) == shared(B,A)
-    """
-    combined = bytes(a ^ b for a, b in zip(k_usuario_a, k_usuario_b))
-    # Segunda pasada con SHA-256 para difusión
-    return hashlib.sha256(combined).digest()
+def format_backup_key(k_usuario: bytes, chunk_size: int = 8, line_chunks: int = 4) -> str:
+    """Formatea la clave privada como backup legible en bloques."""
+    hex_key = k_usuario.hex()
+    chunks = [hex_key[i:i + chunk_size] for i in range(0, len(hex_key), chunk_size)]
+    lines = [" ".join(chunks[i:i + line_chunks]) for i in range(0, len(chunks), line_chunks)]
+    return "\n".join(lines)
 
 
 # ── Sesión local ──────────────────────────────────────────────────────────────
 
 def save_session(k_usuario: bytes, id_publico: str,
-                 alias: str, region: str, password: str,
-                 recovery_answers: dict):
+                 alias: str, region: str, password: str):
     """
     Guarda la sesión cifrada en data/identity.bin
     La contraseña local cifra K_usuario con AES-256-GCM.
-    Los datos personales NO se guardan.
+    La identidad pública se guarda como texto opaco.
     """
     DATA_FILE.parent.mkdir(exist_ok=True)
 
@@ -97,21 +52,14 @@ def save_session(k_usuario: bytes, id_publico: str,
     nonce = secrets.token_bytes(12)
     k_enc = aesgcm.encrypt(nonce, k_usuario, None)
 
-    # Hash de las respuestas de recuperación (no las guarda en plano)
-    recovery_hashes = {
-        q: hashlib.sha256(_normalize(a).encode()).hexdigest()
-        for q, a in recovery_answers.items()
-    }
-
     payload = {
-        "id_publico":       id_publico,
-        "alias":            alias,
-        "region":           region,
-        "salt":             salt.hex(),
-        "nonce":            nonce.hex(),
-        "k_enc":            k_enc.hex(),
-        "recovery_hashes":  recovery_hashes,
-        "failed_attempts":  0
+        "id_publico":      id_publico,
+        "alias":           alias,
+        "region":          region,
+        "salt":            salt.hex(),
+        "nonce":           nonce.hex(),
+        "k_enc":           k_enc.hex(),
+        "failed_attempts": 0,
     }
 
     DATA_FILE.write_text(json.dumps(payload, indent=2))
@@ -164,11 +112,10 @@ def load_session(password: str) -> dict | None:
     DATA_FILE.write_text(json.dumps(payload, indent=2))
 
     return {
-        "id_publico":      payload["id_publico"],
-        "alias":           payload["alias"],
-        "region":          payload["region"],
-        "k_usuario":       k_usuario,
-        "recovery_hashes": payload.get("recovery_hashes", {})
+        "id_publico": payload["id_publico"],
+        "alias":      payload["alias"],
+        "region":     payload["region"],
+        "k_usuario":  k_usuario,
     }
 
 
@@ -176,36 +123,13 @@ def session_exists() -> bool:
     return DATA_FILE.exists()
 
 
-def recover_session(answers: dict, new_password: str) -> bool:
-    """
-    Recuperación de sesión: verifica respuestas de recuperación.
-    Si son correctas, re-cifra la sesión con nueva contraseña.
-    NOTA: No puede recuperar K_usuario (está cifrada con la vieja clave).
-    Solo permite resetear contraseña si el usuario recuerda sus datos
-    personales para re-derivar K_usuario.
-    """
-    if not DATA_FILE.exists():
-        return False
-
-    payload = json.loads(DATA_FILE.read_text())
-    stored  = payload.get("recovery_hashes", {})
-
-    correct = 0
-    for q, a in answers.items():
-        h = hashlib.sha256(_normalize(a).encode()).hexdigest()
-        if stored.get(q) == h:
-            correct += 1
-
-    return correct >= 2  # mínimo 2 de 3 respuestas correctas
-
-
 def _wipe_session():
     """
     Borrado de emergencia: elimina todo excepto installer.py
     Deja un archivo wipe.log con timestamp.
     """
-    import shutil
     import datetime
+    import shutil
 
     wipe_note = f"WIPED at {datetime.datetime.now().isoformat()} — too many failed attempts\n"
 

@@ -1,5 +1,5 @@
 # MyceliumNet — Manual de Servidor / Nodo
-**v0.3.0-alpha**
+**v0.4.0-alpha**
 
 > **Montar un nodo en la red MyceliumNet requiere autorización del administrador de la red (`+57.MYCEL`).
 > No es un proceso automático — debes solicitarlo y esperar aprobación antes de que tu nodo sea visible para los clientes.**

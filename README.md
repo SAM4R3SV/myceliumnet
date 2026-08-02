@@ -1,104 +1,73 @@
-```
-___  _____   __ _____  _____  _      _____  _   _ ___  ___ _   _  _____  _____
-|  \/  |\ \ / //  __ \|  ___|| |    |_   _|| | | ||  \/  || \ | ||  ___||_   _|
-| .  . | \ V / | /  \/| |__  | |      | |  | | | || .  . ||  \| || |__    | |
-| |\/| |  \ /  | |    |  __| | |      | |  | | | || |\/| || . ` ||  __|   | |
-| |  | |  | |  | \__/\| |___ | |____ _| |_ | |_| || |  | || |\  || |___   | |
-\_|  |_/  \_/   \____/\____/ \_____/ \___/  \___/ \_|  |_/\_| \_/\____/   \_/
+# MyceliumNet
 
-[ encrypted mesh · trust no server · know your node ]   v0.3.0-alpha
-```
+Mensajería cifrada de extremo a extremo, minimalista, pensada para correr desde una terminal, incluido Termux en Android.
 
-Proyecto personal de mensajería cifrada persona-a-persona, hecho por mi cuenta mientras aprendía sobre redes y criptografía básica.
-**La idea es que tu identidad sea tu llave y que el servidor no pueda leer el contenido de los mensajes.**
+> **Estado: alpha, en migración activa.** Esta versión usa `mnv2`: identidad X25519 aleatoria, backup obligatorio y payload sin rejilla.
 
-> ⚠️ Esto es un proyecto en progreso, hecho a pulso y todavía con bastantes cosas sin pulir. No está pensado para nada serio ni crítico, es más un experimento personal que voy mejorando con el tiempo.
+## Resumen
 
----
+MyceliumNet es un cliente de mensajería cifrada con estas propiedades:
 
-## Qué intenta hacer
-
-- No usa cuentas con contraseña tradicional.
-- El servidor solo debería guardar paquetes ya cifrados, no contenido legible.
-- Hay una idea de red de nodos por región (`+57.MYCEL`, `+1.NYC`, etc.) aunque todavía es bastante experimental.
-- Intenta funcionar offline y sincronizar después.
-
-No prometo que todo esto esté implementado de forma perfecta — hay partes que funcionan mejor que otras.
-
----
-
-## Problemas conocidos
-
-Hay varias cosas rotas o a medias ahora mismo:
-
-- Las solicitudes de contacto a veces no sincronizan bien el estado entre nodos.
-- La actualización del cliente (OTA) no es confiable todavía, básicamente no funciona del todo.
-- Hay fallos sueltos en el discovery de nodos y en reconexión que no he logrado aislar bien.
-
-Voy a ir corrigiendo esto poco a poco. No descarto reescribir partes grandes del proyecto más adelante si encuentro que la base tiene problemas de fondo que no se pueden parchar fácil.
-
----
+- Cifrado E2E con X25519 + AES-256-GCM.
+- Identidad pública basada en clave pública, sin cuenta tradicional.
+- Servidor zero-knowledge: solo retransmite y almacena paquetes cifrados.
+- Dependencias ligeras de runtime.
 
 ## Instalación
 
-**Requisitos:** Python 3.10+
-
 ```bash
-git clone https://github.com/SAM4R3SV/myceliumnet
+git clone https://github.com/SAM4R3SV/myceliumnet.git
 cd myceliumnet
 pip install -r requirements.txt
 python installer.py
 ```
 
-Luego, cada vez:
+Durante la instalación:
+
+- No se piden datos personales para la identidad.
+- Debes guardar el backup privado que se muestra una sola vez.
+- El instalador no avanza hasta que confirmes ese backup.
+
+## Uso
+
 ```bash
 python main.py
 ```
 
----
+Desde el menú puedes enviar, recibir, gestionar contactos y ver el estado del nodo.
 
-## Idea general de cómo funciona
+## Seguridad
 
-```
-1. Instalas con algunos datos personales → se genera tu ID + una llave local
-   (en teoría los datos no quedan guardados tal cual en disco)
+Garantizado por el diseño actual:
 
-2. Para enviar: se genera un token random
-   El mensaje se cifra y el token viaja por un canal separado al receptor
+- El secreto compartido converge matemáticamente entre dos dispositivos.
+- Tu identidad no depende de datos personales memorizables.
+- El servidor no puede leer el contenido de los mensajes.
 
-3. Para recibir: el receptor usa el token + sus datos para reconstruir la llave
+Pendiente por roadmap:
 
-4. El servidor solo ve paquetes sellados, identificados por hash
-   Los mensajes expiran después de un tiempo
-```
+- Perfect Forward Secrecy.
+- Reducción de inferencia del grafo social.
+- Hardening completo del servidor.
 
-Es la idea de diseño, no garantizo que cada parte esté implementada exactamente así de bien en la práctica.
+## Migración
 
----
+Si venías de `mnv1`:
 
-## Estructura del proyecto
+- La identidad anterior no es compatible con esta versión.
+- Debes reinstalar y generar una identidad nueva.
+- Tus contactos también deben estar en `mnv2`.
 
-```
-myceliumnet/
-├── installer.py          # wizard de configuración
-├── main.py               # cliente principal
-├── core/                 # constantes, UI, identidad, cripto
-├── network/               # discovery y protocolo entre nodos
-├── docs/                  # manuales (medio incompletos todavía)
-└── server/                # código del servidor (aparte)
-```
+## Uso comercial y sugerencias
 
----
+Este repositorio está orientado a uso comercial interno o privado. Si quieres proponer cambios, abre una issue con la sugerencia y el contexto; no se aceptan cambios directos sin revisión.
 
-## Roadmap / cosas pendientes
+## Documentación relacionada
 
-- [ ] Arreglar sincronización de solicitudes de contacto entre nodos
-- [ ] Hacer que la actualización OTA del cliente funcione de verdad
-- [ ] Logs en tiempo real en el panel admin
-- [ ] Conexión directa entre dos usuarios cuando ambos están online
-- [ ] Posiblemente una interfaz gráfica más adelante
-- [ ] Reescribir partes del proyecto si encuentro que vale más la pena que seguir parchando
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+- [`ROADMAP.md`](./ROADMAP.md)
+- ADR-001 a ADR-004
 
----
+## Licencia
 
-*MyceliumNet — un proyecto que sigo construyendo a medida que aprendo.*
+Pendiente de definir.
